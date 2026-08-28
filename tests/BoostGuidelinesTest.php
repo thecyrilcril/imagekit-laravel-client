@@ -9,19 +9,22 @@ use Illuminate\Support\Facades\Blade;
  * installed package on `boost:install` and renders it as Blade. This test is
  * the guard that the file exists, renders, and names only things that exist.
  */
-const GUIDELINE = __DIR__.'/../resources/boost/guidelines/core.blade.php';
+function guidelinePath(): string
+{
+    return __DIR__.'/../resources/boost/guidelines/core.blade.php';
+}
 
 function renderedGuideline(): string
 {
-    $source = file_get_contents(GUIDELINE);
+    $source = file_get_contents(guidelinePath());
 
     expect($source)->toBeString();
 
-    return Blade::render((string) $source);
+    return Blade::render($source);
 }
 
 it('ships a Boost guideline that renders as Blade', function (): void {
-    expect(GUIDELINE)->toBeFile();
+    expect(guidelinePath())->toBeFile();
 
     $rendered = renderedGuideline();
 
@@ -65,5 +68,8 @@ it('states the rules the package depends on', function (): void {
         ->and($rendered)->toContain('imagekit/imagekit')
         ->and($rendered)->toContain('api.imagekit.io')
         ->and($rendered)->toContain('tr:w-200')
-        ->and($rendered)->toContain('IMAGEKIT_PRIVATE_KEY');
+        ->and($rendered)->toContain('IMAGEKIT_PRIVATE_KEY')
+        ->and($rendered)->toContain('phpunit.xml')
+        ->and($rendered)->toContain('Preset')
+        ->and($rendered)->toContain('UnexpectedResponse');
 });
