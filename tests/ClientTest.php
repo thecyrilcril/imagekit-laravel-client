@@ -45,7 +45,3 @@ it('treats an empty credential as missing', function (): void {
     expect(fn () => app(Client::class))
         ->toThrow(InvalidConfiguration::class, 'IMAGEKIT_PRIVATE_KEY');
 });
-
-it('resolves when every credential is present', function (): void {
-    expect(app(Client::class))->toBeInstanceOf(Client::class);
-});

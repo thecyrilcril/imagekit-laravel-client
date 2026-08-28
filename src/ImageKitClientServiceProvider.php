@@ -37,7 +37,7 @@ final class ImageKitClientServiceProvider extends ServiceProvider
         $this->app->singleton(Client::class, function (Application $app): Client {
             $app->make(Configuration::class);
 
-            return new ImageKitClient($app->make(Files::class), $app->make(Urls::class));
+            return new ClientManager($app->make(Files::class), $app->make(Urls::class));
         });
     }
 
