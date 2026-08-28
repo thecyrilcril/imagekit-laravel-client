@@ -256,6 +256,41 @@ The names `imagekit/imagekit` 4.0.2 accepted (`rotate`, `effectSharpen`, `effect
 
 Transformations go in the URL path by default (`/tr:w-200/photo.jpg`). ImageKit's newer SDKs default to the query string (`?tr=w-200`). Both render the same image, but the CDN caches by URL text, so this package keeps the path form to stay byte-identical with URLs already in the wild. Set `transformation_position` to `query` to opt in to the other form.
 
+## Faking the Client in your tests
+
+`ImageKitClient::fake()` swaps the Client in the container for a fake that records uploads, deletions and listings and never sends a request. Anything that injects `Contracts\Client`, and the facade, get the fake from then on.
+
+```php
+use Thecyrilcril\ImageKitClient\Facades\ImageKitClient;
+use Thecyrilcril\ImageKitClient\Files\UploadRequest;
+
+$fake = ImageKitClient::fake();
+
+// ... run the code under test ...
+
+$fake->assertUploaded('photo.jpg');                                   // by file name
+$fake->assertUploaded(fn (UploadRequest $request) => $request->folder === '/avatars'); // or by callback
+$fake->assertNotUploaded('draft.jpg');
+$fake->assertNothingUploaded();
+$fake->assertDeleted('file_123');
+$fake->assertListed('/avatars');                                       // by path, or by callback
+```
+
+The fake answers as ImageKit would, without HTTP:
+
+- `upload()` returns an `UploadedFile` built from the request: `fileId` is `fake_<n>` for the n-th upload, `name` is the given `fileName` (no unique suffix), `filePath` joins `folder` and `fileName`, `url` and `thumbnailUrl` come from the real URL builder, `size` is the byte count for a bytes source (0 for a data URI or a URL), and `fileType` follows the extension.
+- `delete()` records the id and never throws.
+- `list()` and `lazy()` answer from the items you seed with `seedListing(File|Folder ...$items)`, keeping the ones ImageKit would return for the request's `path` (that one folder level) and `type` (files by default; `All` is files and folders), paged by `skip` and `limit`. The other filters are ignored; assert on the recorded `ListRequest` instead. Unseeded, every listing is empty.
+- `urls()` is the real builder, so a test sees the same URLs as production (credentials must be configured, as for the real Client).
+
+To test your own failure handling, tell the fake to reject uploads: every `upload()` then throws `RequestFailed` (HTTP 500) and the attempt is still recorded.
+
+```php
+$fake = ImageKitClient::fake()->failUploads();
+```
+
+Combine it with `Http::fake()` and `Http::assertNothingSent()` to prove your code never reaches ImageKit.
+
 ## Testing
 
 ```bash
