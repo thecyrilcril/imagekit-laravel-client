@@ -13,6 +13,8 @@ use Thecyrilcril\ImageKitClient\Contracts\Urls;
 use Thecyrilcril\ImageKitClient\Files\FilesApi;
 use Thecyrilcril\ImageKitClient\Http\Sleeper;
 use Thecyrilcril\ImageKitClient\Http\SystemSleeper;
+use Thecyrilcril\ImageKitClient\Time\Clock;
+use Thecyrilcril\ImageKitClient\Time\SystemClock;
 use Thecyrilcril\ImageKitClient\Urls\UrlBuilder;
 
 final class ImageKitClientServiceProvider extends ServiceProvider
@@ -30,6 +32,7 @@ final class ImageKitClientServiceProvider extends ServiceProvider
         });
 
         $this->app->singleton(Sleeper::class, SystemSleeper::class);
+        $this->app->singleton(Clock::class, SystemClock::class);
         $this->app->singleton(Files::class, FilesApi::class);
         $this->app->singleton(Urls::class, UrlBuilder::class);
 

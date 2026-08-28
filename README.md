@@ -83,7 +83,7 @@ Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptio
 | `RateLimited` | A `429` and no retry is left | as `ImageKitError`, plus `retryAfterMilliseconds` |
 | `TransportError` | ImageKit could not be reached (after retries) | The `ConnectionException` as `getPrevious()` |
 | `InvalidTransformation` | A Transformation key or value the URL builder cannot render | — |
-| `InvalidUrlRequest` | A URL request with no source, or with both `path` and `src` | — |
+| `InvalidUrlRequest` | A URL request with no source, with both `path` and `src`, or with a signing option that does not fit (`signed` with `src`, `expiresIn` without `signed`, `expiresIn` ≤ 0) | — |
 
 ```php
 use Thecyrilcril\ImageKitClient\Exceptions\NotFound;
@@ -110,7 +110,7 @@ ImageKitClient::urls()->build(new UrlRequest(
 // https://ik.imagekit.io/your_id/tr:w-200,h-200,fo-face/avatars/a.jpg
 ```
 
-A Transformation is a flat array. Its keys are friendly aliases (table below), ImageKit short codes (`['w' => 200, 'e-bgremove' => true]`), or `raw`, which passes its value through verbatim (no encoding) for syntax the map does not cover (layers, conditionals, a code newer than this package). Any other key throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation`, so a typo in a preset fails loudly instead of emitting a broken URL.
+A Transformation is a flat array. Its keys are friendly aliases (table below), ImageKit short codes (`['w' => 200, 'e-bgremove' => true]`), or `raw`, which passes its value through verbatim (no encoding) for syntax the map does not cover (layers, conditionals, a code newer than this package); in a signed URL, percent-encode a `raw` value yourself, since the signature covers the exact bytes. Any other key throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation`, so a typo in a preset fails loudly instead of emitting a broken URL.
 
 - **Chains**: a list of arrays renders as steps joined with `:`: `[['width' => 400], ['rotation' => 90]]` gives `tr:w-400:rt-90`.
 - **Booleans**: spelled out as documented (`lossless => true` gives `lo-true`, `metadata => false` gives `md-false`). Effects take no value when `true` (`grayscale => true` gives `e-grayscale`, `aiRemoveBackground => true` gives `e-bgremove`); give a string to add parameters (`sharpen => 10` gives `e-sharpen-10`, `aiChangeBackground => 'prompt-snow road'` gives `e-changebg-prompt-snow%20road`).
@@ -118,6 +118,16 @@ A Transformation is a flat array. Its keys are friendly aliases (table below), I
 - **Position**: `position: TransformationPosition::Query` puts the Transformation in the query string (`/a.jpg?tr=w-200`) for one request; `transformation_position` in config sets the default.
 - **`src`**: pass an absolute URL instead of `path` to transform an image already on an ImageKit endpoint. The Transformation always goes in the query string, after any query the `src` carries.
 - **`queryParameters`**: appended to the URL (`['ik-attachment' => true]` gives `?ik-attachment=true`).
+- **`signed`**: appends `ik-s`, the HMAC-SHA1 of the URL made with `private_key`, for private files and accounts that restrict unsigned URLs. `expiresIn` (seconds from now) also appends `ik-t`, after which the CDN answers `401`; without it the signature never expires. Signing follows the [current docs](https://imagekit.io/docs/media-delivery-basic-security): the path is percent-encoded first (non-ASCII, spaces; an existing `%` is kept), then everything after the endpoint is signed. Signing needs a `path`: a `src` throws `InvalidUrlRequest`, as does `expiresIn` without `signed` or an `expiresIn` of zero or less.
+
+```php
+ImageKitClient::urls()->build(new UrlRequest(
+    path: '/private/report.pdf',
+    signed: true,
+    expiresIn: 300,
+));
+// https://ik.imagekit.io/your_id/private/report.pdf?ik-t=1700000300&ik-s=…
+```
 
 | Alias | Code | Alias | Code | Alias | Code |
 |---|---|---|---|---|---|

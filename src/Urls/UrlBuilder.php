@@ -9,16 +9,32 @@ use Thecyrilcril\ImageKitClient\Configuration;
 use Thecyrilcril\ImageKitClient\Contracts\Urls;
 use Thecyrilcril\ImageKitClient\Enums\TransformationPosition;
 use Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation;
+use Thecyrilcril\ImageKitClient\Time\Clock;
 
 /**
  * Renders a UrlRequest as a delivery URL. Steps in a chain are joined with
  * `:`, parameters within a step with `,`, and a key with its value by `-`.
+ *
+ * A signed URL carries `ik-s`: the lowercase hex HMAC-SHA1, keyed with the
+ * private key, of everything after the trailing-slashed endpoint followed by
+ * the expiry timestamp (`9999999999` when the URL never expires). An expiring
+ * URL also carries that timestamp as `ik-t`, before `ik-s`, as the docs and
+ * ImageKit's own SDKs order them.
  */
 final readonly class UrlBuilder implements Urls
 {
     private const string TRANSFORMATION_PARAMETER = 'tr';
 
-    public function __construct(private Configuration $configuration) {}
+    private const string SIGNATURE_PARAMETER = 'ik-s';
+
+    private const string EXPIRY_PARAMETER = 'ik-t';
+
+    private const string NEVER_EXPIRES = '9999999999';
+
+    public function __construct(
+        private Configuration $configuration,
+        private Clock $clock,
+    ) {}
 
     #[Override]
     public function build(UrlRequest $request): string
@@ -29,17 +45,74 @@ final readonly class UrlBuilder implements Urls
             return $this->withQuery($request->src, $transformation, $request->queryParameters);
         }
 
-        $endpoint = rtrim($this->configuration->urlEndpoint, '/');
         $path = ltrim((string) $request->path, '/');
         $position = $request->position ?? $this->configuration->transformationPosition;
 
-        if ($position === TransformationPosition::Query) {
-            return $this->withQuery($endpoint.'/'.$path, $transformation, $request->queryParameters);
+        if ($request->signed) {
+            $path = self::percentEncodePath($path);
         }
 
-        $prefix = $transformation === '' ? '' : self::TRANSFORMATION_PARAMETER.':'.$transformation.'/';
+        // Everything after the endpoint: what a signature is made of.
+        $relative = $position === TransformationPosition::Query
+            ? $this->withQuery($path, $transformation, $request->queryParameters)
+            : $this->withQuery(self::transformationPrefix($transformation).$path, '', $request->queryParameters);
 
-        return $this->withQuery($endpoint.'/'.$prefix.$path, '', $request->queryParameters);
+        if ($request->signed) {
+            $relative = $this->sign($relative, $request->expiresIn);
+        }
+
+        return rtrim($this->configuration->urlEndpoint, '/').'/'.$relative;
+    }
+
+    private static function transformationPrefix(string $transformation): string
+    {
+        return $transformation === '' ? '' : self::TRANSFORMATION_PARAMETER.':'.$transformation.'/';
+    }
+
+    /**
+     * The CDN verifies the signature against the request it receives, and
+     * browsers percent-encode a URL before sending it, so a signed path must
+     * already be in that form. Encodes what a browser would (non-ASCII,
+     * whitespace, the quote, hash, angle brackets, question mark, backtick
+     * and braces) and leaves `%` alone, so a path that is already encoded is
+     * not encoded twice.
+     */
+    private static function percentEncodePath(string $path): string
+    {
+        return preg_replace_callback(
+            '/[^!$-;=@-_a-z|~]/',
+            static fn (array $match): string => rawurlencode($match[0]),
+            $path,
+        ) ?? $path;
+    }
+
+    /**
+     * @param  string  $relative  the URL without its endpoint, as the CDN will receive it
+     */
+    private function sign(string $relative, ?int $expiresIn): string
+    {
+        $expiry = $expiresIn === null
+            ? self::NEVER_EXPIRES
+            : (string) ($this->clock->now()->getTimestamp() + $expiresIn);
+
+        $signature = hash_hmac('sha1', $relative.$expiry, $this->configuration->privateKey);
+
+        $parts = $expiresIn === null ? [] : [self::EXPIRY_PARAMETER.'='.$expiry];
+        $parts[] = self::SIGNATURE_PARAMETER.'='.$signature;
+
+        return self::appendQuery($relative, $parts);
+    }
+
+    /**
+     * @param  list<string>  $parts  already-encoded `key=value` pairs
+     */
+    private static function appendQuery(string $url, array $parts): string
+    {
+        if ($parts === []) {
+            return $url;
+        }
+
+        return $url.(str_contains($url, '?') ? '&' : '?').implode('&', $parts);
     }
 
     /**
@@ -62,11 +135,7 @@ final readonly class UrlBuilder implements Urls
             );
         }
 
-        if ($parts === []) {
-            return $url;
-        }
-
-        return $url.(str_contains($url, '?') ? '&' : '?').implode('&', $parts);
+        return self::appendQuery($url, $parts);
     }
 
     /**
@@ -106,7 +175,9 @@ final readonly class UrlBuilder implements Urls
             throw InvalidTransformation::unrenderableValue($key, $value);
         }
 
-        // Verbatim: the caller owns the syntax and the encoding.
+        // Verbatim: the caller owns the syntax and the encoding. In a signed
+        // URL that includes percent-encoding anything a browser would encode
+        // on the way out, or the CDN will verify a different string.
         if ($key === TransformationCodes::RAW) {
             return (string) $value;
         }

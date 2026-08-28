@@ -232,3 +232,103 @@ it('rejects a request with both path and src', function (): void {
     expect(fn () => new UrlRequest(path: '/a.jpg', src: 'https://ik.imagekit.io/other/b.jpg'))
         ->toThrow(InvalidUrlRequest::class, 'not both');
 });
+
+/**
+ * Signing vectors come from ImageKit's own SDK suites (Node, Python, Go,
+ * Java, .NET, Ruby share them): generated against a real account, then the
+ * key was replaced with `dummy-key`. They are not derived from this code.
+ */
+describe('signed URLs', function (): void {
+    beforeEach(function (): void {
+        config()->set('imagekit-client.private_key', 'dummy-key');
+        config()->set('imagekit-client.url_endpoint', 'https://ik.imagekit.io/demo/');
+    });
+
+    it('appends ik-s and no ik-t when signed without an expiry', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            signed: true,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/sdk-testing-files/future-search.png?ik-s=32dbbbfc5f945c0403c71b54c38e76896ef2d6b0');
+    });
+
+    it('signs everything after the endpoint: Transformation, path and query', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            transformation: ['width' => 300, 'height' => 200],
+            queryParameters: ['version' => '2.0'],
+            signed: true,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/tr:w-300,h-200/sdk-testing-files/future-search.png?version=2.0&ik-s=dd1ee8f83d019bc59fd57a5fc4674a11eb8a3496');
+    });
+
+    it('signs the query parameters as they are sent', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            queryParameters: ['version' => '1.0', 'cache' => 'false'],
+            signed: true,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/sdk-testing-files/future-search.png?version=1.0&cache=false&ik-s=f2e5a1b8b6a0b03fd63789dfc6413a94acef9fd8');
+    });
+
+    // No SDK vector fits this shape (the SDKs put `tr` after the other query
+    // parameters), so the signature is hash_hmac('sha1', 'sdk-testing-files/
+    // future-search.png?tr=w-300,h-2009999999999', 'dummy-key') by hand.
+    it('signs a query-position Transformation as part of the query', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            transformation: ['width' => 300, 'height' => 200],
+            position: TransformationPosition::Query,
+            signed: true,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/sdk-testing-files/future-search.png?tr=w-300,h-200&ik-s=62e3d72cd64fe35e060aedc181c898852e062d52');
+    });
+
+    it('percent-encodes a non-ASCII path before signing it', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/हिन्दी.png',
+            signed: true,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/sdk-testing-files/%E0%A4%B9%E0%A4%BF%E0%A4%A8%E0%A5%8D%E0%A4%A6%E0%A5%80.png?ik-s=3fff2f31da1f45e007adcdbe95f88c8c330e743c');
+    });
+
+    // ik-t is now + expiresIn, read from the Clock the TestCase fixes at
+    // 1700000000. The signature is hash_hmac('sha1', 'sdk-testing-files/
+    // future-search.png1700000300', 'dummy-key'), worked out by hand.
+    it('adds ik-t and signs the expiry when expiresIn is given', function (): void {
+        $url = app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            signed: true,
+            expiresIn: 300,
+        ));
+
+        expect($url)->toBe('https://ik.imagekit.io/demo/sdk-testing-files/future-search.png?ik-t=1700000300&ik-s=b9157b095c80756481826855f85e9be3fe5b3309');
+    });
+
+    it('refuses to sign a src, whose endpoint it cannot strip', function (): void {
+        expect(fn (): string => app(Client::class)->urls()->build(new UrlRequest(
+            src: 'https://ik.imagekit.io/demo/sdk-testing-files/future-search.png',
+            signed: true,
+        )))->toThrow(InvalidUrlRequest::class, '[src]');
+    });
+
+    it('refuses an expiry on a URL that is not signed', function (): void {
+        expect(fn (): string => app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            expiresIn: 300,
+        )))->toThrow(InvalidUrlRequest::class, '[expiresIn]');
+    });
+
+    it('refuses an expiry that is not in the future', function (int $expiresIn): void {
+        expect(fn (): string => app(Client::class)->urls()->build(new UrlRequest(
+            path: 'sdk-testing-files/future-search.png',
+            signed: true,
+            expiresIn: $expiresIn,
+        )))->toThrow(InvalidUrlRequest::class, (string) $expiresIn);
+    })->with(['zero' => [0], 'negative' => [-60]]);
+});
