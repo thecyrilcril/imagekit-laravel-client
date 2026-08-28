@@ -77,9 +77,10 @@ Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptio
 | Exception | When | Carries |
 |---|---|---|
 | `InvalidConfiguration` | A credential is missing or a config value is malformed | — |
-| `RequestFailed` | ImageKit answered with a `4xx`/`5xx` other than `404` or `429` (after retries) | `status`, `help`, ImageKit's `message` in `getMessage()` |
-| `NotFound` | ImageKit answered `404` | ImageKit's `message` |
-| `RateLimited` | ImageKit answered `429` and no retry is left | `retryAfterMilliseconds` |
+| `ImageKitError` (abstract) | ImageKit answered with an error status; parent of the next three | `status`, `imageKitMessage`, `help`; `getMessage()` is `ImageKit responded with HTTP 400: <message>` |
+| `RequestFailed` | Any `4xx`/`5xx` other than `404` or `429` (after retries) | as `ImageKitError` |
+| `NotFound` | A `404` | as `ImageKitError` |
+| `RateLimited` | A `429` and no retry is left | as `ImageKitError`, plus `retryAfterMilliseconds` |
 | `TransportError` | ImageKit could not be reached (after retries) | The `ConnectionException` as `getPrevious()` |
 | `InvalidTransformation` | A Transformation key or value the URL builder cannot render | — |
 | `InvalidUrlRequest` | A URL request with no source, or with both `path` and `src` | — |

@@ -11,6 +11,8 @@ use Thecyrilcril\ImageKitClient\Contracts\Client;
 use Thecyrilcril\ImageKitClient\Contracts\Files;
 use Thecyrilcril\ImageKitClient\Contracts\Urls;
 use Thecyrilcril\ImageKitClient\Files\FilesApi;
+use Thecyrilcril\ImageKitClient\Http\Sleeper;
+use Thecyrilcril\ImageKitClient\Http\SystemSleeper;
 use Thecyrilcril\ImageKitClient\Urls\UrlBuilder;
 
 final class ImageKitClientServiceProvider extends ServiceProvider
@@ -27,18 +29,16 @@ final class ImageKitClientServiceProvider extends ServiceProvider
             return Configuration::fromArray($config);
         });
 
+        $this->app->singleton(Sleeper::class, SystemSleeper::class);
         $this->app->singleton(Files::class, FilesApi::class);
         $this->app->singleton(Urls::class, UrlBuilder::class);
 
-        // Configuration is validated on first resolve of the Client, so a
-        // missing credential fails fast, before any request is attempted.
-        // The area stubs do not consume it yet; resolving it here is the
-        // check until they do.
-        $this->app->singleton(Client::class, function (Application $app): Client {
-            $app->make(Configuration::class);
-
-            return new ClientManager($app->make(Files::class), $app->make(Urls::class));
-        });
+        // Both areas take Configuration, so resolving the Client builds it: a
+        // missing credential fails here, before any request is sent.
+        $this->app->singleton(Client::class, fn (Application $app): Client => new ClientManager(
+            $app->make(Files::class),
+            $app->make(Urls::class),
+        ));
     }
 
     public function boot(): void
