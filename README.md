@@ -4,7 +4,7 @@ A Laravel-native client for the [ImageKit](https://imagekit.io) API, built on `I
 
 It exists so that [thecyrilcril/laravel-imagekit](https://github.com/thecyrilcril/laravel-imagekit) no longer needs the `imagekit/imagekit` SDK, which pins Guzzle 7 and cannot be installed on Laravel 13 without `-W`. You can also use it on its own.
 
-> **Status:** pre-release. The Client boots, validates its configuration, and `files()->delete()` and `urls()->build()` work end to end. Upload and list/search land in `0.1.0`.
+> **Status:** pre-release. The Client boots, validates its configuration, and `files()->delete()`, `files()->list()`, `files()->lazy()` and `urls()->build()` work end to end. Upload lands in `0.1.0`.
 
 ## Requirements
 
@@ -61,7 +61,7 @@ final class UploadAvatar
 
     public function handle(): void
     {
-        $this->imageKit->files()->delete('file_id'); // upload, list, search follow
+        $this->imageKit->files()->delete('file_id'); // also list(), lazy()
         $this->imageKit->urls();                     // build delivery URLs
     }
 }
@@ -82,6 +82,8 @@ Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptio
 | `NotFound` | A `404` | as `ImageKitError` |
 | `RateLimited` | A `429` and no retry is left | as `ImageKitError`, plus `retryAfterMilliseconds` |
 | `TransportError` | ImageKit could not be reached (after retries) | The `ConnectionException` as `getPrevious()` |
+| `InvalidListRequest` | A `ListRequest` with a `limit` outside `1–1000` or a negative `skip` | — |
+| `UnexpectedResponse` | ImageKit answered `2xx` with a body that is not what the docs promise (not a JSON listing, an asset with no `type`, a required field missing or malformed) | — |
 | `InvalidTransformation` | A Transformation key or value the URL builder cannot render | — |
 | `InvalidUrlRequest` | A URL request with no source, with both `path` and `src`, or with a signing option that does not fit (`signed` with `src`, `expiresIn` without `signed`, `expiresIn` ≤ 0) | — |
 
@@ -94,6 +96,63 @@ try {
     // Already gone: treat as deleted.
 }
 ```
+
+## Listing and searching files
+
+`files()->list()` fetches one page of a listing as a `FileListing`; `files()->lazy()` walks every page for you. Both take a `ListRequest` whose properties are exactly the documented query parameters, with enums where ImageKit enumerates.
+
+```php
+use Thecyrilcril\ImageKitClient\Enums\AssetType;
+use Thecyrilcril\ImageKitClient\Enums\FileType;
+use Thecyrilcril\ImageKitClient\Enums\SortOrder;
+use Thecyrilcril\ImageKitClient\Facades\ImageKitClient;
+use Thecyrilcril\ImageKitClient\Files\File;
+use Thecyrilcril\ImageKitClient\Files\Folder;
+use Thecyrilcril\ImageKitClient\Files\ListRequest;
+
+$page = ImageKitClient::files()->list(new ListRequest(
+    path: '/avatars',              // one folder level; see below for sub-folders
+    type: AssetType::All,          // File, FileVersion, Folder, or All (files and folders together)
+    fileType: FileType::Image,     // All, Image, NonImage
+    sort: SortOrder::CreatedDescending,
+    tags: ['hero', 'summer sale'], // sent comma-joined
+    name: 'banner.jpg',
+    limit: 100,                    // 1–1000
+    skip: 0,
+));
+
+foreach ($page->files() as $file) {
+    $file->fileId; $file->filePath; $file->url; $file->size; $file->tags; $file->createdAt; // …
+}
+
+foreach ($page->folders() as $folder) {
+    $folder->folderId; $folder->folderPath;
+}
+```
+
+- `ListRequest` accepts `limit`, `skip`, `path`, `type`, `fileType`, `sort`, `tags`, `name` and `searchQuery`. A property left `null` (or empty) is not sent, so ImageKit's defaults apply. A `limit` outside `1–1000` or a negative `skip` throws `InvalidListRequest` when the request is built.
+- `searchQuery` is ImageKit's Lucene-like string (`createdAt > "7d" AND path : "/avatars/"`). When it is present ImageKit ignores `tags`, `type` and `name`; express those inside the query.
+- `path` lists one folder level only. To search a folder and its sub-folders in one request, put the path in `searchQuery` (`path : "/avatars/"`). To walk them yourself, list with `type: AssetType::All` and recurse into each `Folder`'s `folderPath` — that is what `imagekit:reconcile` in thecyrilcril/laravel-imagekit does.
+- A folder with nothing in it, or a search that matches nothing, is an empty `FileListing` (`isEmpty()`, `count() === 0`), not an exception.
+
+`FileListing` is `Countable` and iterable. `items` holds every entry in ImageKit's order (`File` and `Folder` objects, told apart by class or by `->type`); `files()` and `folders()` return one kind.
+
+`File` carries every documented field, typed: `fileId`, `type` (`AssetType::File` or `FileVersion`), `name`, `filePath`, `url`, `thumbnail`, `fileType` (`image`/`non-image`, kept as a string), `mime`, `size`, `width`, `height`, `hasAlpha`, `tags`, `aiTags` (`AITag` objects: `name`, `confidence`, `source`), `customCoordinates`, `customMetadata`, `description`, `embeddedMetadata`, `selectedFieldsSchema`, `isPrivateFile`, `isPublished`, `versionInfo` (`id`, `name`), `createdAt`, `updatedAt` (`DateTimeImmutable`), and for video `duration`, `bitRate`, `audioCodec`, `videoCodec`. A field ImageKit only sets for some files is `null` when absent; the list and object fields are empty instead. `Folder` carries `folderId`, `name`, `folderPath`, `customMetadata`, `createdAt`, `updatedAt` and `type` (`AssetType::Folder`). Fields this package does not know are ignored; a `2xx` whose body is not a listing, or an asset missing a required field, throws `UnexpectedResponse`.
+
+### Paging
+
+`lazy()` returns a `LazyCollection` of `File|Folder`. Nothing is sent until you consume it; each page is fetched when you reach it. Paging starts at the request's `skip` (default `0`), moves by its `limit` (`ListRequest::DEFAULT_PAGE_SIZE`, 100, when not set), and stops on the first page shorter than that limit.
+
+```php
+ImageKitClient::files()
+    ->lazy(new ListRequest(path: '/avatars', type: AssetType::All, limit: 500))
+    ->filter(fn (File|Folder $item): bool => $item instanceof File)
+    ->each(function (File $file): void {
+        // …
+    });
+```
+
+An error on any page (`RequestFailed`, `RateLimited`, `TransportError`, `UnexpectedResponse`) surfaces from the consumer loop.
 
 ## Building URLs
 
