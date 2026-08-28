@@ -4,7 +4,7 @@ A Laravel-native client for the [ImageKit](https://imagekit.io) API, built on `I
 
 It exists so that [thecyrilcril/laravel-imagekit](https://github.com/thecyrilcril/laravel-imagekit) no longer needs the `imagekit/imagekit` SDK, which pins Guzzle 7 and cannot be installed on Laravel 13 without `-W`. You can also use it on its own.
 
-> **Status:** pre-release. The Client boots, validates its configuration, and `files()->delete()`, `files()->list()`, `files()->lazy()` and `urls()->build()` work end to end. Upload lands in `0.1.0`.
+> **Status:** pre-release. The Client boots, validates its configuration, and `files()->upload()`, `files()->delete()`, `files()->list()`, `files()->lazy()` and `urls()->build()` work end to end.
 
 ## Requirements
 
@@ -86,6 +86,7 @@ Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptio
 | `UnexpectedResponse` | ImageKit answered `2xx` with a body that is not what the docs promise (not a JSON listing, an asset with no `type`, a required field missing or malformed) | — |
 | `InvalidTransformation` | A Transformation key or value the URL builder cannot render | — |
 | `InvalidUrlRequest` | A URL request with no source, with both `path` and `src`, or with a signing option that does not fit (`signed` with `src`, `expiresIn` without `signed`, `expiresIn` ≤ 0) | — |
+| `InvalidUploadRequest` | An upload request that could never succeed: empty bytes, a data URI without `data:`, a URL that is not `http(s)`, or an empty `fileName` | — |
 
 ```php
 use Thecyrilcril\ImageKitClient\Exceptions\NotFound;
@@ -96,6 +97,46 @@ try {
     // Already gone: treat as deleted.
 }
 ```
+
+## Uploading files
+
+`files()->upload()` takes an `UploadRequest` and returns an `UploadedFile`. The content comes from one of three `UploadSource`s: raw bytes (sent as the multipart file part), a base64 `data:` URI, or a public `http(s)` URL that ImageKit fetches itself. Every documented upload field is a named argument under its API name; a field left `null` stays off the wire so ImageKit applies its own default.
+
+```php
+use Thecyrilcril\ImageKitClient\Enums\ResponseField;
+use Thecyrilcril\ImageKitClient\Facades\ImageKitClient;
+use Thecyrilcril\ImageKitClient\Files\UploadRequest;
+use Thecyrilcril\ImageKitClient\Files\UploadSource;
+
+$uploaded = ImageKitClient::files()->upload(new UploadRequest(
+    source: UploadSource::bytes($contents),            // or ::dataUri('data:image/png;base64,…') or ::url('https://…')
+    fileName: 'avatar.jpg',
+    folder: '/avatars',
+    useUniqueFileName: false,
+    overwriteFile: true,
+    tags: ['avatar', 'user-42'],
+    isPrivateFile: false,
+    customMetadata: ['userId' => 42],
+    responseFields: [ResponseField::Tags, ResponseField::CustomMetadata],
+    extensions: [['name' => 'remove-bg', 'options' => ['add_shadow' => true]]],
+    checks: "'file.size' < '5MB'",
+));
+
+$uploaded->fileId;       // string
+$uploaded->url;          // string
+$uploaded->width;        // ?int — null for a non-image
+$uploaded->tags;         // list<string>
+$uploaded->aiTags;       // list<AITag>
+$uploaded->versionInfo;  // ?VersionInfo
+$uploaded->extensionStatus?->removeBg; // ?ExtensionState: Success, Pending or Failed
+$uploaded->duration;     // ?int — the video group: duration, bitRate, audioCodec, videoCodec
+```
+
+Wire rules, so nothing is sent in a form ImageKit misreads: booleans go as the words `"true"`/`"false"` (a raw `false` would leave as an empty field); `tags` and `responseFields` are comma-joined; `customMetadata`, `extensions` and `transformation` are JSON. The shapes of those three are ImageKit's own and pass through verbatim — see the [upload API reference](https://imagekit.io/docs/api-reference/upload-file/upload-file) for the keys each accepts.
+
+`UploadedFile` exposes every documented response field, typed. The fields ImageKit only sends when asked for through `responseFields` (`tags`, `customCoordinates`, `isPrivateFile`, `isPublished`, `customMetadata`, `embeddedMetadata`, `metadata`, `selectedFieldsSchema`) read as `null`, or as an empty list or map, when they were not asked for. Fields ImageKit adds later are ignored.
+
+An upload ImageKit rejects throws `RequestFailed` with the status and ImageKit's `message`; an unreachable ImageKit throws `TransportError`; a `2xx` whose body is not the documented shape throws `UnexpectedResponse`. Empty bytes, a data URI without the `data:` prefix, a URL that is not `http(s)`, or an empty `fileName` throw `InvalidUploadRequest` before any request leaves.
 
 ## Listing and searching files
 

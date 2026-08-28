@@ -14,6 +14,8 @@ use Thecyrilcril\ImageKitClient\Files\File;
 use Thecyrilcril\ImageKitClient\Files\FileListing;
 use Thecyrilcril\ImageKitClient\Files\Folder;
 use Thecyrilcril\ImageKitClient\Files\ListRequest;
+use Thecyrilcril\ImageKitClient\Files\UploadedFile;
+use Thecyrilcril\ImageKitClient\Files\UploadRequest;
 
 /**
  * The files area of the ImageKit API: upload, delete, list and search.
@@ -23,6 +25,17 @@ use Thecyrilcril\ImageKitClient\Files\ListRequest;
  */
 interface Files
 {
+    /**
+     * Upload one file from raw bytes, a base64 data URI, or a public URL.
+     *
+     * @throws NotFound when ImageKit answered 404 (a URL source it could not fetch, say)
+     * @throws RateLimited when ImageKit throttled the request and retries are exhausted
+     * @throws RequestFailed when ImageKit rejected the upload; `imageKitMessage` says why
+     * @throws TransportError when ImageKit could not be reached
+     * @throws UnexpectedResponse when ImageKit accepted the upload but the response is not the documented shape
+     */
+    public function upload(UploadRequest $request): UploadedFile;
+
     /**
      * Permanently delete one file by its ImageKit file id.
      *

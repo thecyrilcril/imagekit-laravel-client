@@ -43,6 +43,19 @@ final readonly class Payload
         return $this->data[$key];
     }
 
+    public function int(string $key): int
+    {
+        if (! array_key_exists($key, $this->data)) {
+            throw UnexpectedResponse::missingField($this->asset, $key);
+        }
+
+        if (! is_int($this->data[$key])) {
+            throw UnexpectedResponse::malformedField($this->asset, $key, 'an integer');
+        }
+
+        return $this->data[$key];
+    }
+
     public function stringOrNull(string $key): ?string
     {
         $value = $this->data[$key] ?? null;

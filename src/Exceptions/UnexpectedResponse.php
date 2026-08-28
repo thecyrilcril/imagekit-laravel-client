@@ -18,6 +18,11 @@ final class UnexpectedResponse extends ImageKitClientException
         return new self('ImageKit answered with a body that is not a JSON array of assets.');
     }
 
+    public static function notAnObject(string $asset): self
+    {
+        return new self(sprintf('ImageKit answered with a body that is not a JSON object (%s expected).', $asset));
+    }
+
     public static function itemNotAnObject(int $index): self
     {
         return new self(sprintf('Asset #%d in the listing is not a JSON object.', $index));
