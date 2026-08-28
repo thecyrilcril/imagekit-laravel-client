@@ -11,7 +11,6 @@ use Illuminate\Support\LazyCollection;
 use Override;
 use Thecyrilcril\ImageKitClient\Contracts\Files;
 use Thecyrilcril\ImageKitClient\Enums\AssetType;
-use Thecyrilcril\ImageKitClient\Enums\ResponseField;
 use Thecyrilcril\ImageKitClient\Exceptions\UnexpectedResponse;
 use Thecyrilcril\ImageKitClient\Http\Connection;
 use Thecyrilcril\ImageKitClient\Http\Payload;
