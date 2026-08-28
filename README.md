@@ -64,6 +64,53 @@ ImageKitClient::urls();
 
 Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptions\ImageKitClientException`.
 
+## Building URLs
+
+`urls()->build()` turns a `UrlRequest` into a delivery URL. Pure string building, no HTTP.
+
+```php
+use Thecyrilcril\ImageKitClient\Facades\ImageKitClient;
+use Thecyrilcril\ImageKitClient\Urls\UrlRequest;
+
+ImageKitClient::urls()->build(new UrlRequest(
+    path: '/avatars/a.jpg',
+    transformation: ['width' => 200, 'height' => 200, 'focus' => 'face'],
+));
+// https://ik.imagekit.io/your_id/tr:w-200,h-200,fo-face/avatars/a.jpg
+```
+
+A Transformation is a flat array. Its keys are friendly aliases (table below), ImageKit short codes (`['w' => 200, 'e-bgremove' => true]`), or `raw`, which passes its value through verbatim for syntax the map does not cover (layers, conditionals). Any other key throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation`, so a typo in a preset fails loudly instead of emitting a broken URL.
+
+- **Chains**: a list of arrays renders as steps joined with `:`: `[['width' => 400], ['rotation' => 90]]` gives `tr:w-400:rt-90`.
+- **Booleans**: spelled out as documented (`lossless => true` gives `lo-true`, `metadata => false` gives `md-false`). Effects take no value when `true` (`grayscale => true` gives `e-grayscale`, `aiRemoveBackground => true` gives `e-bgremove`); give a string to add parameters (`sharpen => 10` gives `e-sharpen-10`, `aiChangeBackground => 'prompt-snow road'` gives `e-changebg-prompt-snow%20road`).
+- **Slashes** in a value become `@@` (`defaultImage => '/images/fallback.jpg'` gives `di-images@@fallback.jpg`).
+- **Position**: `position: TransformationPosition::Query` puts the Transformation in the query string (`/a.jpg?tr=w-200`) for one request; `transformation_position` in config sets the default.
+- **`src`**: pass an absolute URL instead of `path` to transform an image already on an ImageKit endpoint. The Transformation always goes in the query string, after any query the `src` carries.
+- **`queryParameters`**: appended to the URL (`['ik-attachment' => true]` gives `?ik-attachment=true`).
+
+| Alias | Code | Alias | Code | Alias | Code |
+|---|---|---|---|---|---|
+| `width` | `w` | `defaultImage` | `di` | `colorize` | `e-colorize` |
+| `height` | `h` | `named` | `n` | `distort` | `e-distort` |
+| `aspectRatio` | `ar` | `radius` | `r` | `aiRemoveBackground` | `e-bgremove` |
+| `crop` | `c` | `background` | `bg` | `aiRemoveBackgroundExternal` | `e-removedotbg` |
+| `cropMode` | `cm` | `border` | `b` | `aiChangeBackground` | `e-changebg` |
+| `focus` | `fo` | `rotation` | `rt` | `aiEdit` | `e-edit` |
+| `zoom` | `z` | `flip` | `fl` | `aiDropShadow` | `e-dropshadow` |
+| `x`, `y` | `x`, `y` | `blur` | `bl` | `aiRetouch` | `e-retouch` |
+| `xCenter`, `yCenter` | `xc`, `yc` | `trim` | `t` | `aiUpscale` | `e-upscale` |
+| `dpr` | `dpr` | `opacity` | `o` | `aiVariation` | `e-genvar` |
+| `quality` | `q` | `colorReplace` | `cr` | `page` | `pg` |
+| `format` | `f` | `contrastStretch` | `e-contrast` | `contentCredentials` | `c2pa` |
+| `lossless` | `lo` | `sharpen` | `e-sharpen` | `startOffset` | `so` |
+| `progressive` | `pr` | `unsharpMask` | `e-usm` | `endOffset` | `eo` |
+| `metadata` | `md` | `grayscale` | `e-grayscale` | `duration` | `du` |
+| `colorProfile` | `cp` | `shadow` | `e-shadow` | `videoCodec` | `vc` |
+| `density` | `dn` | `gradient` | `e-gradient` | `audioCodec` | `ac` |
+| `original` | `orig` | | | `streamingResolutions` | `sr` |
+
+The names `imagekit/imagekit` 4.0.2 accepted (`rotate`, `effectSharpen`, `effectUSM`, `effectContrast`, `effectGray`, `effectShadow`, `effectGradient`, and `'-'` as a value for a bare code) are also accepted, so presets written against it keep rendering the same URL.
+
 ## Transformation position
 
 Transformations go in the URL path by default (`/tr:w-200/photo.jpg`). ImageKit's newer SDKs default to the query string (`?tr=w-200`). Both render the same image, but the CDN caches by URL text, so this package keeps the path form to stay byte-identical with URLs already in the wild. Set `transformation_position` to `query` to opt in to the other form.
