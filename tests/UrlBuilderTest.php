@@ -99,9 +99,9 @@ it('accepts an ImageKit short code as a key', function (): void {
         ->toBe('https://ik.imagekit.io/test/tr:w-200,e-bgremove/a.jpg');
 });
 
-it('passes a raw Transformation through verbatim', function (): void {
-    expect(buildUrl(['raw' => 'l-image,i-logo.png,l-end', 'width' => 200]))
-        ->toBe('https://ik.imagekit.io/test/tr:l-image,i-logo.png,l-end,w-200/a.jpg');
+it('passes a raw Transformation through verbatim, without encoding it', function (): void {
+    expect(buildUrl(['raw' => 'l-text,i-Hello%20World,pg-name-"layer",l-end', 'width' => 200]))
+        ->toBe('https://ik.imagekit.io/test/tr:l-text,i-Hello%20World,pg-name-"layer",l-end,w-200/a.jpg');
 });
 
 it('throws on an unknown Transformation key', function (): void {
@@ -114,10 +114,10 @@ it('spells false out for codes that take a boolean', function (): void {
         ->toBe('https://ik.imagekit.io/test/tr:md-false,cp-false/a.jpg');
 });
 
-it('renders a dash value as the bare code, as the SDK did', function (): void {
-    expect(buildUrl(['effectSharpen' => '-']))
+it('renders a dash or empty value as the bare code, as the SDK did', function (string $value): void {
+    expect(buildUrl(['effectSharpen' => $value]))
         ->toBe('https://ik.imagekit.io/test/tr:e-sharpen/a.jpg');
-});
+})->with(['dash' => ['-'], 'empty' => ['']]);
 
 it('encodes a slash inside a value as @@', function (): void {
     expect(buildUrl(['defaultImage' => '/images/fallback.jpg']))

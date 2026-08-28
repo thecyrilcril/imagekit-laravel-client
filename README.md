@@ -4,7 +4,7 @@ A Laravel-native client for the [ImageKit](https://imagekit.io) API, built on `I
 
 It exists so that [thecyrilcril/laravel-imagekit](https://github.com/thecyrilcril/laravel-imagekit) no longer needs the `imagekit/imagekit` SDK, which pins Guzzle 7 and cannot be installed on Laravel 13 without `-W`. You can also use it on its own.
 
-> **Status:** scaffold. The Client boots, validates its configuration and exposes `files()` and `urls()`. Upload, delete, list/search and URL building land in `0.1.0`.
+> **Status:** pre-release. The Client boots, validates its configuration, and `files()->delete()` and `urls()->build()` work end to end. Upload and list/search land in `0.1.0`.
 
 ## Requirements
 
@@ -39,6 +39,14 @@ Every config key reads from the environment:
 
 Resolving the Client with a missing credential, an unknown `transformation_position`, or a non-integer `http.*` value throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidConfiguration`. You find out about a bad `.env` at boot, not at the first upload.
 
+### HTTP behaviour
+
+Every request goes through `Illuminate\Http\Client`, so `Http::fake()` intercepts it in your tests. Management calls go to `https://api.imagekit.io/v1`, uploads to `https://upload.imagekit.io/api/v1`, both with HTTP Basic auth (private key as the user, empty password) and `Accept: application/json`.
+
+- `http.timeout` is the number of seconds to wait for a response.
+- `http.retries` is the number of extra attempts after a transport error (DNS, refused connection, timeout) or a `5xx`. Retries are immediate.
+- A `429` is retried once, after waiting out the `X-RateLimit-Reset` header (milliseconds), and only when `http.retries` is above `0`. The wait goes through `Thecyrilcril\ImageKitClient\Http\Sleeper`, which you can rebind in tests so nothing actually waits.
+
 ## Usage
 
 Inject the contract, or use the facade. Both resolve the same singleton.
@@ -53,16 +61,38 @@ final class UploadAvatar
 
     public function handle(): void
     {
-        $this->imageKit->files(); // upload, delete, list, search
-        $this->imageKit->urls();  // build delivery URLs
+        $this->imageKit->files()->delete('file_id'); // upload, list, search follow
+        $this->imageKit->urls();                     // build delivery URLs
     }
 }
 
-ImageKitClient::files();
+ImageKitClient::files()->delete('file_id');
 ImageKitClient::urls();
 ```
 
-Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptions\ImageKitClientException`.
+### Exceptions
+
+Every exception the package throws extends `Thecyrilcril\ImageKitClient\Exceptions\ImageKitClientException`. Catch that for "anything the Client can fail with", or a subclass to tell the failures apart:
+
+| Exception | When | Carries |
+|---|---|---|
+| `InvalidConfiguration` | A credential is missing or a config value is malformed | — |
+| `RequestFailed` | ImageKit answered with a `4xx`/`5xx` other than `404` or `429` (after retries) | `status`, `help`, ImageKit's `message` in `getMessage()` |
+| `NotFound` | ImageKit answered `404` | ImageKit's `message` |
+| `RateLimited` | ImageKit answered `429` and no retry is left | `retryAfterMilliseconds` |
+| `TransportError` | ImageKit could not be reached (after retries) | The `ConnectionException` as `getPrevious()` |
+| `InvalidTransformation` | A Transformation key or value the URL builder cannot render | — |
+| `InvalidUrlRequest` | A URL request with no source, or with both `path` and `src` | — |
+
+```php
+use Thecyrilcril\ImageKitClient\Exceptions\NotFound;
+
+try {
+    ImageKitClient::files()->delete($fileId);
+} catch (NotFound) {
+    // Already gone: treat as deleted.
+}
+```
 
 ## Building URLs
 
@@ -79,7 +109,7 @@ ImageKitClient::urls()->build(new UrlRequest(
 // https://ik.imagekit.io/your_id/tr:w-200,h-200,fo-face/avatars/a.jpg
 ```
 
-A Transformation is a flat array. Its keys are friendly aliases (table below), ImageKit short codes (`['w' => 200, 'e-bgremove' => true]`), or `raw`, which passes its value through verbatim for syntax the map does not cover (layers, conditionals). Any other key throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation`, so a typo in a preset fails loudly instead of emitting a broken URL.
+A Transformation is a flat array. Its keys are friendly aliases (table below), ImageKit short codes (`['w' => 200, 'e-bgremove' => true]`), or `raw`, which passes its value through verbatim (no encoding) for syntax the map does not cover (layers, conditionals, a code newer than this package). Any other key throws `Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation`, so a typo in a preset fails loudly instead of emitting a broken URL.
 
 - **Chains**: a list of arrays renders as steps joined with `:`: `[['width' => 400], ['rotation' => 90]]` gives `tr:w-400:rt-90`.
 - **Booleans**: spelled out as documented (`lossless => true` gives `lo-true`, `metadata => false` gives `md-false`). Effects take no value when `true` (`grayscale => true` gives `e-grayscale`, `aiRemoveBackground => true` gives `e-bgremove`); give a string to add parameters (`sharpen => 10` gives `e-sharpen-10`, `aiChangeBackground => 'prompt-snow road'` gives `e-changebg-prompt-snow%20road`).

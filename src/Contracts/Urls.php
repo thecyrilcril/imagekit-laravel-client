@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Thecyrilcril\ImageKitClient\Contracts;
 
 use Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation;
-use Thecyrilcril\ImageKitClient\Exceptions\InvalidUrlRequest;
 use Thecyrilcril\ImageKitClient\Urls\UrlRequest;
 
 /**
@@ -15,8 +14,7 @@ use Thecyrilcril\ImageKitClient\Urls\UrlRequest;
 interface Urls
 {
     /**
-     * @throws InvalidTransformation when a Transformation key is unknown
-     * @throws InvalidUrlRequest when the request cannot describe a URL
+     * @throws InvalidTransformation when a Transformation key or value cannot be rendered
      */
     public function build(UrlRequest $request): string;
 }

@@ -8,8 +8,9 @@ use Thecyrilcril\ImageKitClient\Exceptions\InvalidTransformation;
 
 /**
  * The friendly-alias to ImageKit short-code map, one row per documented
- * transformation. A short code is accepted as a key too, so a code the map
- * has not caught up with is still reachable; `raw` passes through verbatim.
+ * transformation. A short code from the map is accepted as a key too. Any
+ * other key throws, so a typo fails loudly; syntax the map does not cover
+ * (layers, conditionals, a brand-new code) goes through `raw`, verbatim.
  *
  * Source: docs/research/2026-08-28-imagekit-api-vs-sdk.md section 3 in
  * thecyrilcril/laravel-imagekit, which cites the ImageKit docs page by page.

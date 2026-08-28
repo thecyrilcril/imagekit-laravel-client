@@ -55,7 +55,7 @@ final readonly class UrlBuilder implements Urls
 
         if ($queryParameters !== []) {
             $parts[] = http_build_query(
-                array_map(static fn (string|int|float|bool $value): string|int|float => is_bool($value) ? ($value ? 'true' : 'false') : $value, $queryParameters),
+                array_map(static fn (string|int|float|bool $value): string|int|float => is_bool($value) ? self::spell($value) : $value, $queryParameters),
                 '',
                 '&',
                 PHP_QUERY_RFC3986,
@@ -94,7 +94,7 @@ final readonly class UrlBuilder implements Urls
             }
         }
 
-        return $this->encode(implode(':', $rendered));
+        return implode(':', $rendered);
     }
 
     /**
@@ -106,32 +106,38 @@ final readonly class UrlBuilder implements Urls
             throw InvalidTransformation::unrenderableValue($key, $value);
         }
 
+        // Verbatim: the caller owns the syntax and the encoding.
         if ($key === TransformationCodes::RAW) {
             return (string) $value;
         }
 
         $code = TransformationCodes::resolve($key);
 
-        // A bare code: `true` on an effect, or the SDK's `'-'` convention.
-        if (($value === true && TransformationCodes::isBareWhenTrue($code)) || $value === '-') {
+        // A bare code: `true` on an effect, or the SDK's `'-'` / `''` convention.
+        if (($value === true && TransformationCodes::isBareWhenTrue($code)) || $value === '-' || $value === '') {
             return $code;
         }
 
         if (is_bool($value)) {
-            return $code.'-'.($value ? 'true' : 'false');
+            return $code.'-'.self::spell($value);
         }
 
-        // ImageKit spells `/` as `@@` inside a value (default images, layer
-        // paths) so the value cannot be mistaken for a path segment.
-        return $code.'-'.str_replace('/', '@@', trim((string) $value, '/'));
+        return $code.'-'.$this->encode(trim((string) $value, '/'));
+    }
+
+    private static function spell(bool $value): string
+    {
+        return $value ? 'true' : 'false';
     }
 
     /**
-     * Percent-encodes the rendered Transformation, keeping the three
-     * characters ImageKit's own syntax relies on readable.
+     * ImageKit spells `/` as `@@` inside a value (default images, layer
+     * paths) so the value cannot be mistaken for a path segment. Everything
+     * else that is not URL safe is percent-encoded, as the docs show for
+     * prompts (`prompt-snow%20road`).
      */
-    private function encode(string $transformation): string
+    private function encode(string $value): string
     {
-        return strtr(rawurlencode($transformation), ['%2C' => ',', '%3A' => ':', '%40' => '@']);
+        return strtr(rawurlencode(str_replace('/', '@@', $value)), ['%40' => '@']);
     }
 }
