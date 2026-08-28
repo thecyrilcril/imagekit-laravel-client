@@ -18,6 +18,8 @@ composer require thecyrilcril/imagekit-laravel-client
 php artisan vendor:publish --tag=imagekit-client-config
 ```
 
+The package ships [Laravel Boost](https://laravel.com/docs/boost) AI guidelines (`resources/boost/guidelines/core.blade.php`): run `php artisan boost:install` and select this package, and your coding agent learns the rules above without you writing them.
+
 Add your credentials to `.env`:
 
 ```env

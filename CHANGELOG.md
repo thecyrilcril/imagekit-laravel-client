@@ -4,6 +4,10 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Laravel Boost AI guidelines at `resources/boost/guidelines/core.blade.php`. `php artisan boost:install` offers this package and adds its rules (go through the Client, the two areas, config and env keys, the exception tree, flat Transformation arrays with an unknown key throwing, path position by default, `ImageKitClient::fake()` in tests, never `imagekit/imagekit`) to the agent's guideline file.
+
 ## [0.1.0] - 2026-08-28
 
 ### Added
