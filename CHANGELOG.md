@@ -4,6 +4,8 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-28
+
 ### Added
 
 - Package scaffold: service provider, `config/imagekit-client.php` with env-var defaults for `public_key`, `private_key`, `url_endpoint`, `transformation_position`, `http.timeout` and `http.retries`, the `ImageKitClient` facade, and the `Client` contract exposing `files()` and `urls()`.
