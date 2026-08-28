@@ -1,0 +1,48 @@
+{
+    "name": "thecyrilcril/imagekit-laravel-client",
+    "description": "A Laravel-native ImageKit API client built on Illuminate\\Http\\Client: typed requests, typed results, typed exceptions.",
+    "keywords": ["laravel", "imagekit", "cdn", "images", "api-client", "http-client"],
+    "license": "MIT",
+    "authors": [
+        { "name": "Cyril Cril", "email": "cyrilcril@gmail.com" }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/contracts": "^12.0|^13.0",
+        "illuminate/http": "^12.0|^13.0",
+        "illuminate/support": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.24",
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^4.0",
+        "phpstan/phpstan": "^2.1"
+    },
+    "autoload": {
+        "psr-4": { "Thecyrilcril\\ImageKitClient\\": "src/" }
+    },
+    "autoload-dev": {
+        "psr-4": { "Thecyrilcril\\ImageKitClient\\Tests\\": "tests/" }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": { "pestphp/pest-plugin": true }
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Thecyrilcril\\ImageKitClient\\ImageKitClientServiceProvider"],
+            "aliases": { "ImageKitClient": "Thecyrilcril\\ImageKitClient\\Facades\\ImageKitClient" }
+        }
+    },
+    "scripts": {
+        "test": "vendor/bin/pest",
+        "test:coverage": "@php -d xdebug.mode=coverage vendor/bin/pest --coverage --min=100",
+        "lint": "vendor/bin/pint",
+        "analyse": "vendor/bin/phpstan analyse",
+        "ci": ["@lint --test", "@analyse", "@test:coverage"],
+        "ci:no-coverage-gate": ["@lint --test", "@analyse", "@test"]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
